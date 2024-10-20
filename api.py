@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import subprocess
 import requests
+from urllib.parse import quote  # Correct import for Python 3
 
 app = Flask(__name__)
 
@@ -53,7 +54,7 @@ def upload_files():
     # Check for output
     aligned_file = os.path.join(OUTPUT_FOLDER, audio.filename.replace('.wav', '.TextGrid'))
     if os.path.exists(aligned_file):
-        return jsonify({"message": "Alignment completed", "output_file": aligned_file})
+        return jsonify({"message": "Alignment completed", "output_file": quote(aligned_file)})
     else:
         return jsonify({"error": "Alignment file not found"}), 500
 
