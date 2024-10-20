@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import subprocess
+import shutil
 
 app = Flask(__name__)
 
@@ -21,7 +22,7 @@ def upload_files():
     transcription = request.files['transcription']
     dictionary = request.files['dictionary']
 
-    # Save uploaded files
+    # Save uploaded files in the upload folder
     audio_path = os.path.join(UPLOAD_FOLDER, audio.filename)
     transcription_path = os.path.join(UPLOAD_FOLDER, transcription.filename)
     dictionary_path = os.path.join(UPLOAD_FOLDER, dictionary.filename)
@@ -31,13 +32,16 @@ def upload_files():
     dictionary.save(dictionary_path)
 
     # Run Montreal Forced Aligner using Docker
+    # Copy the dictionary file into the Docker-accessible upload folder
+    docker_dictionary_path = f"/app/audio_files/{dictionary.filename}"
+
     try:
         subprocess.run([
             'docker', 'run', '--rm',
-            '-v', f'{UPLOAD_FOLDER}:/app/audio_files',
+            '-v', f'{UPLOAD_FOLDER}:/app/audio_files',   # Ensure the dictionary is inside /app/audio_files
             '-v', f'{OUTPUT_FOLDER}:/app/output',
             'mmcauliffe/montreal-forced-aligner:latest',
-            'align', '/app/audio_files', dictionary_path, 'english', '/app/output'
+            'align', '/app/audio_files', docker_dictionary_path, 'english', '/app/output'
         ], check=True)
     except subprocess.CalledProcessError as e:
         return jsonify({"error": f"Error during alignment: {e}"}), 500
