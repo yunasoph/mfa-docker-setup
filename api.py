@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import subprocess
 import requests
-from urllib.parse import quote  # Correct import for Python 3
+import time
 
 app = Flask(__name__)
 
@@ -16,13 +16,22 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Automatically download the CMU dictionary if not already present
 if not os.path.exists(CMUDICT_PATH):
-    cmudict_url = 'https://raw.githubusercontent.com/MontrealCorpusTools/mfa-models/main/dictionary/english/cmudict.dict'
-    response = requests.get(cmudict_url)
-    if response.status_code == 200:
-        with open(CMUDICT_PATH, 'w') as f:
-            f.write(response.text)
+    cmudict_url = 'https://raw.githubusercontent.com/cmusphinx/cmudict/7cd8fb5b5a18058688f413e92282eb18815f1956/cmudict.dict'
+    for i in range(3):  # Retry up to 3 times
+        try:
+            response = requests.get(cmudict_url, timeout=10)
+            if response.status_code == 200:
+                with open(CMUDICT_PATH, 'w') as f:
+                    f.write(response.text)
+                print("CMU dictionary downloaded successfully.")
+                break
+            else:
+                print(f"Attempt {i+1}: Could not download CMU dictionary (status code {response.status_code}), retrying...")
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {i+1}: Network error occurred: {e}, retrying...")
+        time.sleep(2)
     else:
-        raise RuntimeError("Could not download CMU dictionary")
+        raise RuntimeError("Could not download CMU dictionary after multiple attempts")
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -54,7 +63,7 @@ def upload_files():
     # Check for output
     aligned_file = os.path.join(OUTPUT_FOLDER, audio.filename.replace('.wav', '.TextGrid'))
     if os.path.exists(aligned_file):
-        return jsonify({"message": "Alignment completed", "output_file": quote(aligned_file)})
+        return jsonify({"message": "Alignment completed", "output_file": aligned_file})
     else:
         return jsonify({"error": "Alignment file not found"}), 500
 
