@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
 import os
 import subprocess
-import shutil
 
 app = Flask(__name__)
+
+# Set the maximum upload size to 100 MB
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
 UPLOAD_FOLDER = '/workspaces/mfa-docker-setup/uploads'
 OUTPUT_FOLDER = '/workspaces/mfa-docker-setup/aligned_output'
@@ -11,6 +13,10 @@ OUTPUT_FOLDER = '/workspaces/mfa-docker-setup/aligned_output'
 # Create upload and output folders if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({"error": "File size is too large. Maximum allowed size is 100 MB."}), 413
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -22,7 +28,7 @@ def upload_files():
     transcription = request.files['transcription']
     dictionary = request.files['dictionary']
 
-    # Save uploaded files in the upload folder
+    # Save uploaded files
     audio_path = os.path.join(UPLOAD_FOLDER, audio.filename)
     transcription_path = os.path.join(UPLOAD_FOLDER, transcription.filename)
     dictionary_path = os.path.join(UPLOAD_FOLDER, dictionary.filename)
@@ -32,16 +38,13 @@ def upload_files():
     dictionary.save(dictionary_path)
 
     # Run Montreal Forced Aligner using Docker
-    # Copy the dictionary file into the Docker-accessible upload folder
-    docker_dictionary_path = f"/app/audio_files/{dictionary.filename}"
-
     try:
         subprocess.run([
             'docker', 'run', '--rm',
-            '-v', f'{UPLOAD_FOLDER}:/app/audio_files',   # Ensure the dictionary is inside /app/audio_files
+            '-v', f'{UPLOAD_FOLDER}:/app/audio_files',
             '-v', f'{OUTPUT_FOLDER}:/app/output',
             'mmcauliffe/montreal-forced-aligner:latest',
-            'align', '/app/audio_files', docker_dictionary_path, 'english', '/app/output'
+            'align', '/app/audio_files', dictionary_path, 'english', '/app/output'
         ], check=True)
     except subprocess.CalledProcessError as e:
         return jsonify({"error": f"Error during alignment: {e}"}), 500
